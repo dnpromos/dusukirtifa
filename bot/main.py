@@ -6,6 +6,7 @@ from bot.config import TELEGRAM_BOT_TOKEN
 from bot.services.database import init_db
 from bot.services.scheduler import setup_scheduler
 from bot.services.airlines import load_airlines
+from bot.services.webhook import start_webhook_server
 from bot.handlers.start import start_command
 from bot.handlers.fallback import handle_message, track_yes_callback, track_no_callback
 
@@ -20,6 +21,7 @@ logger = logging.getLogger(__name__)
 async def post_init(app: Application):
     await init_db()
     await load_airlines()
+    await start_webhook_server()
     scheduler = setup_scheduler(app)
     scheduler.start()
     logger.info("Scheduler started — daily alerts at configured time (Europe/Istanbul)")

@@ -105,6 +105,7 @@ Kurallar:
 MAX_HISTORY = 10
 POLL_INTERVAL = 0.4
 MAX_POLL_ATTEMPTS = 25
+WEBHOOK_TIMEOUT = 12.0
 TERMINAL_STATUSES = {"task_postprocess_end", "task_cancel"}
 
 
@@ -128,18 +129,23 @@ def _auth_headers() -> dict:
 
 async def _submit_task(client: httpx.AsyncClient, prompt: str,
                        system_instructions: str,
-                       temperature: str = "0.1") -> str | None:
+                       temperature: str = "0.1",
+                       callback_url: str = "") -> str | None:
+    form_data = {
+        "prompt": prompt,
+        "systemInstructions": system_instructions,
+        "thinkingLevel": "low",
+        "temperature": temperature,
+        "topP": "0.95",
+        "maxOutputTokens": 1024,
+    }
+    if callback_url:
+        form_data["callbackUrl"] = callback_url
+
     resp = await client.post(
         f"{WIRO_BASE_URL}/Run/google/gemini-3-flash",
         headers=_auth_headers(),
-        data={
-            "prompt": prompt,
-            "systemInstructions": system_instructions,
-            "thinkingLevel": "low",
-            "temperature": temperature,
-            "topP": "0.95",
-            "maxOutputTokens": 1024,
-        },
+        data=form_data,
         timeout=15,
     )
     if resp.status_code != 200:
@@ -152,6 +158,52 @@ async def _submit_task(client: httpx.AsyncClient, prompt: str,
         return None
 
     return data.get("taskid")
+
+
+async def _extract_text_from_task(task_data: dict,
+                                  client: httpx.AsyncClient | None = None) -> str | None:
+    if isinstance(task_data, dict):
+        tasks = task_data.get("tasklist", [])
+        if tasks:
+            task = tasks[0]
+        else:
+            task = task_data
+    else:
+        return None
+
+    status = task.get("status", "")
+    if status == "task_cancel":
+        return None
+
+    outputs = task.get("outputs", [])
+    for output in outputs:
+        url = output.get("url", "")
+        if url:
+            dl_client = client or httpx.AsyncClient()
+            try:
+                text_resp = await dl_client.get(url, timeout=15)
+                if text_resp.status_code == 200:
+                    return text_resp.text
+            finally:
+                if not client:
+                    await dl_client.aclose()
+
+    debug = task.get("debugoutput", "")
+    if debug:
+        return debug
+    return None
+
+
+async def _wait_webhook(callback_url: str, future: asyncio.Future,
+                        client: httpx.AsyncClient) -> str | None:
+    try:
+        task_data = await asyncio.wait_for(future, timeout=WEBHOOK_TIMEOUT)
+        return await _extract_text_from_task(task_data, client)
+    except asyncio.TimeoutError:
+        logger.warning("Wiro webhook timed out, falling back to poll")
+        return None
+    except asyncio.CancelledError:
+        return None
 
 
 async def _poll_task(client: httpx.AsyncClient, task_id: str) -> str | None:
@@ -176,23 +228,43 @@ async def _poll_task(client: httpx.AsyncClient, task_id: str) -> str | None:
         status = task.get("status", "")
 
         if status in TERMINAL_STATUSES:
-            if status == "task_cancel":
-                return None
-            outputs = task.get("outputs", [])
-            for output in outputs:
-                url = output.get("url", "")
-                if url:
-                    text_resp = await client.get(url, timeout=15)
-                    if text_resp.status_code == 200:
-                        return text_resp.text
-
-            debug = task.get("debugoutput", "")
-            if debug:
-                return debug
-            return None
+            return await _extract_text_from_task(data, client)
 
     logger.warning(f"Wiro task {task_id} timed out after polling")
     return None
+
+
+async def _run_ai(prompt: str, system_instructions: str,
+                  temperature: str = "0.1") -> str | None:
+    from bot.config import WEBHOOK_BASE_URL
+
+    use_webhook = bool(WEBHOOK_BASE_URL)
+    callback_url = ""
+    future = None
+    callback_id = ""
+
+    if use_webhook:
+        from bot.services.webhook import get_callback_url, cleanup_future
+        callback_url, future = get_callback_url()
+        callback_id = callback_url.rsplit("/", 1)[-1]
+
+    async with httpx.AsyncClient() as client:
+        task_id = await _submit_task(
+            client, prompt, system_instructions,
+            temperature=temperature, callback_url=callback_url,
+        )
+        if not task_id:
+            if callback_id:
+                cleanup_future(callback_id)
+            return None
+
+        if use_webhook and future:
+            result = await _wait_webhook(callback_url, future, client)
+            if result is not None:
+                return result
+            logger.info(f"Webhook miss for {task_id}, polling...")
+
+        return await _poll_task(client, task_id)
 
 
 def _parse_json_response(text: str) -> dict | None:
@@ -211,14 +283,9 @@ async def parse_flight_request(user_message: str) -> dict:
     today = date.today().isoformat()
     system = PARSE_SYSTEM.format(today=today, iata_ref=IATA_REFERENCE)
 
-    async with httpx.AsyncClient() as client:
-        task_id = await _submit_task(client, user_message, system)
-        if not task_id:
-            return {"error": "AI servisine bağlanılamadı. Lütfen tekrar deneyin."}
-
-        result_text = await _poll_task(client, task_id)
-        if not result_text:
-            return {"error": "AI yanıt veremedi. Lütfen tekrar deneyin."}
+    result_text = await _run_ai(user_message, system)
+    if not result_text:
+        return {"error": "AI yanıt veremedi. Lütfen tekrar deneyin."}
 
     parsed = _parse_json_response(result_text)
     if parsed:
@@ -244,20 +311,12 @@ async def chat(user_message: str, history: list[dict]) -> dict:
 
     prompt = _build_history_prompt(history, user_message)
 
-    async with httpx.AsyncClient() as client:
-        task_id = await _submit_task(client, prompt, system, temperature="0.5")
-        if not task_id:
-            return {
-                "action": "chat",
-                "message": "Şu an bağlantı sorunu yaşıyorum. Biraz sonra tekrar dener misin? 🙏",
-            }
-
-        result_text = await _poll_task(client, task_id)
-        if not result_text:
-            return {
-                "action": "chat",
-                "message": "Yanıt alamadım, tekrar dener misin? 🤔",
-            }
+    result_text = await _run_ai(prompt, system, temperature="0.5")
+    if not result_text:
+        return {
+            "action": "chat",
+            "message": "Yanıt alamadım, tekrar dener misin? 🤔",
+        }
 
     parsed = _parse_json_response(result_text)
     if parsed and "action" in parsed:

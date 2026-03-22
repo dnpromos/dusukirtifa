@@ -22,3 +22,6 @@ PARTNER_TRS = "510608"
 WIRO_API_KEY = os.getenv("WIRO_API_KEY", "")
 WIRO_API_SECRET = os.getenv("WIRO_API_SECRET", "")
 WIRO_BASE_URL = "https://api.wiro.ai/v1"
+
+WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
+WEBHOOK_PORT = int(os.getenv("PORT", os.getenv("WEBHOOK_PORT", "8080")))
