@@ -10,7 +10,7 @@ AVIASALES_BASE_URL = "https://api.travelpayouts.com"
 
 MAX_TRACKED_FLIGHTS = 3
 
-DB_PATH = os.getenv("DB_PATH", "tele_flight.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 DAILY_ALERT_HOUR = int(os.getenv("DAILY_ALERT_HOUR", "9"))
 DAILY_ALERT_MINUTE = int(os.getenv("DAILY_ALERT_MINUTE", "0"))
@@ -23,5 +23,6 @@ WIRO_API_KEY = os.getenv("WIRO_API_KEY", "")
 WIRO_API_SECRET = os.getenv("WIRO_API_SECRET", "")
 WIRO_BASE_URL = "https://api.wiro.ai/v1"
 
-WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "")
+_railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "")
+WEBHOOK_BASE_URL = f"https://{_railway_domain}" if _railway_domain else os.getenv("WEBHOOK_BASE_URL", "")
 WEBHOOK_PORT = int(os.getenv("PORT", os.getenv("WEBHOOK_PORT", "8080")))
