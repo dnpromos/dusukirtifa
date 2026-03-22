@@ -31,7 +31,8 @@ async def _get(client: httpx.AsyncClient, url: str, params: dict) -> dict | None
 
 async def get_cheapest_prices(origin: str, destination: str,
                               depart_date: str, return_date: str | None = None,
-                              client: httpx.AsyncClient | None = None) -> dict | None:
+                              client: httpx.AsyncClient | None = None,
+                              direct: bool = False) -> dict | None:
     params = {
         "origin": origin,
         "destination": destination,
@@ -40,6 +41,8 @@ async def get_cheapest_prices(origin: str, destination: str,
     }
     if return_date:
         params["return_date"] = return_date
+    if direct:
+        params["direct"] = "true"
 
     url = f"{AVIASALES_BASE_URL}/aviasales/v3/prices_for_dates"
 

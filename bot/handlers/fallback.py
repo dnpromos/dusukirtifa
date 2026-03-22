@@ -132,6 +132,7 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
     destination = _safe_upper(result.get("destination"))
     depart_date = (result.get("depart_date") or "").strip()
     return_date = result.get("return_date")
+    direct = bool(result.get("direct"))
     if return_date in ("null", None, ""):
         return_date = None
 
@@ -149,7 +150,8 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
         "return_date": return_date,
     }
 
-    price_data = await get_cheapest_prices(origin, destination, depart_date, return_date)
+    price_data = await get_cheapest_prices(origin, destination, depart_date, return_date,
+                                           direct=direct)
 
     flight_info = {
         "origin": origin, "destination": destination,
