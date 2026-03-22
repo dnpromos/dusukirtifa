@@ -259,6 +259,8 @@ async def get_calendar_prices(origin: str, destination: str,
         dep = (p.get("departure_at") or "")[:10]
         if not dep or dep in seen_dates:
             continue
+        if not dep.startswith(month):
+            continue
         seen_dates[dep] = {
             "date": dep,
             "price": p.get("price", 0),

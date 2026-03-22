@@ -152,7 +152,7 @@ async def format_direct_flights(flights: list[dict], origin: str, dest: str) -> 
         if price <= 0:
             continue
 
-        day = date[8:10] if len(date) >= 10 else date
+        day_month = f"{date[8:10]}.{date[5:7]}" if len(date) >= 10 else date
         star = " ⭐" if price == min_price else ""
         airline_name = get_airline_name(f.get("airline", ""))
         duration = _format_duration(f.get("duration", 0))
@@ -164,7 +164,7 @@ async def format_direct_flights(flights: list[dict], origin: str, dest: str) -> 
             details.append(duration)
         detail_str = f" · {' · '.join(details)}" if details else ""
 
-        lines.append(f"  {day} — <b>{price:,}₺</b> ✈️{detail_str}{star}")
+        lines.append(f"  {day_month} — <b>{price:,}₺</b> ✈️{detail_str}{star}")
 
     if min_price:
         lines.append(f"\n⭐ En ucuz gün: <b>{min_price:,}₺</b>")
@@ -226,12 +226,12 @@ def format_calendar(data: list[dict], origin: str, dest: str, month: str,
         if price <= 0:
             continue
 
-        day = date[8:10] if len(date) >= 10 else date
+        day_month = f"{date[8:10]}.{date[5:7]}" if len(date) >= 10 else date
         star = " ⭐" if price == min_price else ""
         transfers = d.get("transfers", 0)
         stop_str = "✈️" if transfers == 0 else f"🔄{transfers}"
 
-        lines.append(f"  {day} — <b>{price:,}₺</b> {stop_str}{star}")
+        lines.append(f"  {day_month} — <b>{price:,}₺</b> {stop_str}{star}")
 
     if min_price:
         lines.append(f"\n⭐ En ucuz gün: <b>{min_price:,}₺</b>")
