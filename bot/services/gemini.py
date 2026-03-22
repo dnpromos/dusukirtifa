@@ -64,8 +64,6 @@ MESAJ FORMATLAMA:
 2️⃣ <b>Roma</b> — Tarihi kalıntılar ve İtalyan mutfağı
 3️⃣ <b>Prag</b> — Uygun fiyat, masalsı mimari
 
-{iata_ref}
-
 Bugünün tarihi: {today}
 
 YANIT FORMATI: Yanıtını SADECE aşağıdaki JSON formatlarından BİRİ ile ver. Başka hiçbir şey yazma.
@@ -174,15 +172,12 @@ def _auth_headers() -> dict:
 
 async def _submit_task(client: httpx.AsyncClient, prompt: str,
                        system_instructions: str,
-                       temperature: str = "0.1",
                        callback_url: str = "") -> str | None:
     form_data = {
         "prompt": prompt,
         "systemInstructions": system_instructions,
-        "thinkingLevel": "low",
-        "temperature": temperature,
-        "topP": "0.95",
-        "maxOutputTokens": 1024,
+        "thinkingLevel": "medium",
+        "maxOutputTokens": 2048,
     }
     if callback_url:
         form_data["callbackUrl"] = callback_url
@@ -279,8 +274,7 @@ async def _poll_task(client: httpx.AsyncClient, task_id: str) -> str | None:
     return None
 
 
-async def _run_ai(prompt: str, system_instructions: str,
-                  temperature: str = "0.1") -> str | None:
+async def _run_ai(prompt: str, system_instructions: str) -> str | None:
     from bot.config import WEBHOOK_BASE_URL
 
     use_webhook = bool(WEBHOOK_BASE_URL)
@@ -296,7 +290,7 @@ async def _run_ai(prompt: str, system_instructions: str,
     async with httpx.AsyncClient() as client:
         task_id = await _submit_task(
             client, prompt, system_instructions,
-            temperature=temperature, callback_url=callback_url,
+            callback_url=callback_url,
         )
         if not task_id:
             if callback_id:
@@ -352,11 +346,11 @@ def _build_history_prompt(history: list[dict], new_message: str) -> str:
 async def chat(user_message: str, history: list[dict]) -> dict:
     from datetime import date
     today = date.today().isoformat()
-    system = CHAT_SYSTEM.format(today=today, iata_ref=IATA_REFERENCE)
+    system = CHAT_SYSTEM.format(today=today)
 
     prompt = _build_history_prompt(history, user_message)
 
-    result_text = await _run_ai(prompt, system, temperature="0.5")
+    result_text = await _run_ai(prompt, system)
     if not result_text:
         return {
             "action": "chat",
