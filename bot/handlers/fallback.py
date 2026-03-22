@@ -59,13 +59,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     history = context.user_data.get("chat_history", [])
 
-    await update.effective_chat.send_action(constants.ChatAction.TYPING)
+    thinking_msg = await update.message.reply_text("💭 Düşünüyorum...")
 
     try:
         result = await gemini_chat(text, history)
     except Exception as e:
         logger.error(f"AI chat error: {e}")
-        await update.message.reply_text(
+        await thinking_msg.edit_text(
             "⚠️ Bir hata oluştu, tekrar dener misin?",
             parse_mode="HTML",
         )
@@ -83,48 +83,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["chat_history"] = history
 
     status_text = SEARCH_STATUS.get(action)
-    status_msg = None
     if status_text:
-        status_msg = await update.message.reply_text(
+        await thinking_msg.edit_text(
             f"{ai_message}\n\n{status_text}",
             parse_mode="HTML",
         )
 
     try:
         if action == "search_flight":
-            await _do_search(update, context, result, ai_message, status_msg)
+            await _do_search(update, context, result, ai_message, thinking_msg)
         elif action == "show_popular":
-            await _do_popular(update, result, ai_message, status_msg)
+            await _do_popular(update, result, ai_message, thinking_msg)
         elif action == "show_direct":
-            await _do_direct(update, result, ai_message, status_msg)
+            await _do_direct(update, result, ai_message, thinking_msg)
         elif action == "show_trends":
-            await _do_trends(update, result, ai_message, status_msg)
+            await _do_trends(update, result, ai_message, thinking_msg)
         elif action == "list_flights":
-            await _do_list(update, ai_message)
+            await thinking_msg.edit_text(
+                f"{ai_message}\n\n{await _build_list_text(update)}",
+                parse_mode="HTML",
+            )
         elif action == "remove_flight":
-            await _do_remove(update, result, ai_message)
+            await _do_remove(update, result, ai_message, thinking_msg)
         elif action == "show_latest":
-            await _do_latest(update, result, ai_message, status_msg)
+            await _do_latest(update, result, ai_message, thinking_msg)
         elif action == "show_calendar":
-            await _do_calendar(update, result, ai_message, status_msg)
+            await _do_calendar(update, result, ai_message, thinking_msg)
         else:
-            await update.message.reply_text(ai_message, parse_mode="HTML")
+            await thinking_msg.edit_text(ai_message, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Action '{action}' failed: {e}")
-        if status_msg:
-            try:
-                await status_msg.edit_text(
-                    ai_message or "⚠️ İşlem sırasında hata oluştu, tekrar dener misin?",
-                    parse_mode="HTML",
-                )
-            except Exception:
-                pass
-        elif ai_message:
-            await update.message.reply_text(ai_message, parse_mode="HTML")
-        else:
-            await update.message.reply_text(
-                "⚠️ İşlem sırasında hata oluştu, tekrar dener misin?",
+        try:
+            await thinking_msg.edit_text(
+                ai_message or "⚠️ İşlem sırasında hata oluştu, tekrar dener misin?",
+                parse_mode="HTML",
             )
+        except Exception:
+            pass
 
 
 async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
@@ -239,42 +234,40 @@ async def _do_trends(update: Update, result: dict, ai_message: str, status_msg=N
         await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _do_list(update: Update, ai_message: str):
+async def _build_list_text(update: Update) -> str:
     user_id = update.effective_user.id
     flights = await get_user_flights(user_id)
-    text = format_flight_list(flights)
-
-    await update.message.reply_text(
-        f"{ai_message}\n\n{text}",
-        parse_mode="HTML",
-    )
+    return format_flight_list(flights)
 
 
-async def _do_remove(update: Update, result: dict, ai_message: str):
+async def _do_remove(update: Update, result: dict, ai_message: str, status_msg=None):
     user_id = update.effective_user.id
     flight_id = result.get("flight_id")
 
     if not flight_id:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
     try:
         flight_id = int(flight_id)
     except (ValueError, TypeError):
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
     removed = await remove_flight(flight_id, user_id)
-    if removed:
-        await update.message.reply_text(
-            f"✅ #{flight_id} numaralı uçuş takipten çıkarıldı.",
-            parse_mode="HTML",
-        )
+    msg = (f"✅ #{flight_id} numaralı uçuş takipten çıkarıldı."
+           if removed else
+           f"⚠️ #{flight_id} numaralı uçuş bulunamadı veya sana ait değil.")
+    if status_msg:
+        await status_msg.edit_text(msg, parse_mode="HTML")
     else:
-        await update.message.reply_text(
-            f"⚠️ #{flight_id} numaralı uçuş bulunamadı veya sana ait değil.",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(msg, parse_mode="HTML")
 
 
 async def _do_latest(update: Update, result: dict, ai_message: str, status_msg=None):
