@@ -207,14 +207,18 @@ async def format_latest_prices(prices: list[dict], origin: str) -> str:
     return "\n".join(lines)
 
 
-def format_calendar(data: list[dict], origin: str, dest: str, month: str) -> str:
+def format_calendar(data: list[dict], origin: str, dest: str, month: str,
+                    direct_only: bool = False) -> str:
+    label = " — Aktarmasız" if direct_only else ""
     if not data:
+        if direct_only:
+            return f"📭 <b>{origin} → {dest}</b> için {month} aktarmasız uçuş bulunamadı."
         return f"📭 <b>{origin} → {dest}</b> için {month} takvimi bulunamadı."
 
     prices = [d["price"] for d in data if d["price"] > 0]
     min_price = min(prices) if prices else 0
 
-    lines = [f"📅 <b>Fiyat Takvimi: {origin} → {dest} ({month})</b>\n"]
+    lines = [f"📅 <b>Fiyat Takvimi: {origin} → {dest} ({month}){label}</b>\n"]
 
     for d in data:
         date = d["date"]
