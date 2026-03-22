@@ -167,6 +167,69 @@ async def format_direct_flights(flights: list[dict], origin: str, dest: str) -> 
     return "\n".join(lines)
 
 
+async def format_latest_prices(prices: list[dict], origin: str) -> str:
+    if not prices:
+        return f"📭 <b>{origin}</b> çıkışlı güncel bilet bulunamadı."
+
+    lines = [f"🔥 <b>{origin} — Son Bulunan En Ucuz Biletler</b>\n"]
+
+    for i, p in enumerate(prices, 1):
+        dest = p["destination"]
+        price = p["price"]
+        depart = p.get("depart_date", "")[:10]
+        ret = p.get("return_date", "")[:10]
+        airline_name = get_airline_name(p.get("airline", ""))
+        stops = _format_stops(p.get("transfers", 0))
+
+        line = f"  {i}. <b>{origin} → {dest}</b> — <b>{price:,}₺</b>"
+        details = []
+        if airline_name:
+            details.append(airline_name)
+        details.append(stops)
+        if depart:
+            date_info = f"📅 {depart}"
+            if ret:
+                date_info += f" ↩ {ret}"
+            details.append(date_info)
+        line += f"\n      {' · '.join(details)}"
+
+        if depart:
+            url = await build_search_link(origin, dest, depart, ret or None, sub_id="latest")
+            line += f"\n      🛒 <a href='{url}'>Satın Al</a>"
+
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
+def format_calendar(data: list[dict], origin: str, dest: str, month: str) -> str:
+    if not data:
+        return f"📭 <b>{origin} → {dest}</b> için {month} takvimi bulunamadı."
+
+    prices = [d["price"] for d in data if d["price"] > 0]
+    min_price = min(prices) if prices else 0
+
+    lines = [f"📅 <b>Fiyat Takvimi: {origin} → {dest} ({month})</b>\n"]
+
+    for d in data:
+        date = d["date"]
+        price = d["price"]
+        if price <= 0:
+            continue
+
+        day = date[8:10] if len(date) >= 10 else date
+        star = " ⭐" if price == min_price else ""
+        transfers = d.get("transfers", 0)
+        stop_str = "✈️" if transfers == 0 else f"🔄{transfers}"
+
+        lines.append(f"  {day} — <b>{price:,}₺</b> {stop_str}{star}")
+
+    if min_price:
+        lines.append(f"\n⭐ En ucuz gün: <b>{min_price:,}₺</b>")
+
+    return "\n".join(lines)
+
+
 async def format_smart_alert(flight: dict, price_data: dict,
                              diff: float, days_until: int) -> str:
     origin = flight["origin"]

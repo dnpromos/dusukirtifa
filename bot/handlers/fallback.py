@@ -8,11 +8,13 @@ from bot.services.gemini import chat as gemini_chat
 from bot.services.aviasales import (
     get_cheapest_prices, get_popular_routes,
     get_direct_flights, get_trend_data,
+    get_latest_prices, get_month_matrix,
 )
 from bot.services.database import add_flight, get_user_flights, remove_flight
 from bot.utils.formatters import (
     format_flight_card, format_flight_list, format_popular_routes,
-    format_direct_flights, format_trend,
+    format_direct_flights, format_trend, format_latest_prices,
+    format_calendar,
 )
 from bot.config import MAX_TRACKED_FLIGHTS
 
@@ -73,6 +75,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _do_list(update, ai_message)
         elif action == "remove_flight":
             await _do_remove(update, result, ai_message)
+        elif action == "show_latest":
+            await _do_latest(update, result, ai_message)
+        elif action == "show_calendar":
+            await _do_calendar(update, result, ai_message)
         else:
             await update.message.reply_text(ai_message, parse_mode="HTML")
     except Exception as e:
@@ -216,6 +222,43 @@ async def _do_remove(update: Update, result: dict, ai_message: str):
             f"⚠️ #{flight_id} numaralı uçuş bulunamadı veya sana ait değil.",
             parse_mode="HTML",
         )
+
+
+async def _do_latest(update: Update, result: dict, ai_message: str):
+    origin = _safe_upper(result.get("origin"))
+    destination = _safe_upper(result.get("destination")) or None
+
+    if not origin:
+        await update.message.reply_text(ai_message, parse_mode="HTML")
+        return
+
+    prices = await get_latest_prices(origin, destination)
+    text = await format_latest_prices(prices, origin)
+
+    await update.message.reply_text(
+        f"{ai_message}\n\n{text}",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+
+
+async def _do_calendar(update: Update, result: dict, ai_message: str):
+    origin = _safe_upper(result.get("origin"))
+    dest = _safe_upper(result.get("destination"))
+    month = (result.get("month") or "").strip()
+
+    if not origin or not dest or not month:
+        await update.message.reply_text(ai_message, parse_mode="HTML")
+        return
+
+    data = await get_month_matrix(origin, dest, month)
+    text = format_calendar(data, origin, dest, month)
+
+    await update.message.reply_text(
+        f"{ai_message}\n\n{text}",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

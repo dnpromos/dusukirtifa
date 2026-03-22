@@ -226,6 +226,78 @@ async def get_direct_flights(origin: str, destination: str,
     return results
 
 
+async def get_latest_prices(origin: str,
+                            destination: str | None = None,
+                            client: httpx.AsyncClient | None = None) -> list[dict]:
+    params = {
+        "origin": origin,
+        "currency": CURRENCY,
+        "sorting": "price",
+        "limit": "10",
+        "period_type": "year",
+        "one_way": "false",
+    }
+    if destination:
+        params["destination"] = destination
+
+    url = f"{AVIASALES_BASE_URL}/v2/prices/latest"
+
+    if client:
+        data = await _get(client, url, params)
+    else:
+        async with httpx.AsyncClient() as c:
+            data = await _get(c, url, params)
+
+    if not data or not data.get("success") or not data.get("data"):
+        return []
+
+    results = []
+    for p in data["data"]:
+        results.append({
+            "origin": p.get("origin", origin),
+            "destination": p.get("destination", ""),
+            "price": p.get("value", 0),
+            "depart_date": p.get("depart_date", ""),
+            "return_date": p.get("return_date", ""),
+            "airline": p.get("airline", ""),
+            "transfers": p.get("number_of_changes", 0),
+            "expires_at": p.get("expires_at", ""),
+        })
+    return results
+
+
+async def get_month_matrix(origin: str, destination: str,
+                           month: str,
+                           client: httpx.AsyncClient | None = None) -> list[dict]:
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "month": month,
+        "currency": CURRENCY,
+    }
+    url = f"{AVIASALES_BASE_URL}/v2/prices/month-matrix"
+
+    if client:
+        data = await _get(client, url, params)
+    else:
+        async with httpx.AsyncClient() as c:
+            data = await _get(c, url, params)
+
+    if not data or not data.get("success") or not data.get("data"):
+        return []
+
+    results = []
+    for p in sorted(data["data"], key=lambda x: x.get("depart_date", "")):
+        results.append({
+            "date": (p.get("depart_date") or "")[:10],
+            "return_date": (p.get("return_date") or "")[:10],
+            "price": p.get("value", 0),
+            "transfers": p.get("number_of_changes", 0),
+            "duration": p.get("duration", 0),
+        })
+    return results
+
+
 async def batch_fetch_prices(routes: list[tuple[str, str, str, str | None]],
                              client: httpx.AsyncClient) -> dict:
     cache: dict[str, dict | None] = {}
