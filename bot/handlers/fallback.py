@@ -13,7 +13,10 @@ from bot.services.aviasales import (
     get_latest_prices, get_month_matrix,
     get_calendar_prices,
 )
-from bot.services.database import add_flight, get_user_flights, remove_flight, upsert_user
+from bot.services.database import (
+    add_flight, get_user_flights, remove_flight, upsert_user,
+    get_user_email, save_user_email,
+)
 from bot.utils.formatters import (
     format_flight_card, format_flight_list, format_popular_routes,
     format_direct_flights, format_trend, format_latest_prices,
@@ -77,6 +80,9 @@ SEARCH_STATUS = {
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if not text:
+        return
+
+    if await handle_email_reply(update, context):
         return
 
     history = context.user_data.get("chat_history", [])
@@ -399,16 +405,52 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     flight = {**pending, "id": flight_id}
     card = await format_flight_card(flight, price_data)
 
-    await query.message.edit_text(
+    email = await get_user_email(query.from_user.id)
+
+    track_text = (
         f"✅ Takibe alındı!\n\n{card}\n\n"
         "📋 <b>Takip nasıl çalışır?</b>\n"
         "• Fiyat %10'dan fazla değişirse anında bildirim\n"
         "• Uçuşa 7 günden az kaldığında günlük kontrol\n"
         "• Her pazartesi haftalık özet rapor\n"
-        "• Uçuş tarihi geçince otomatik silinir",
+        "• Uçuş tarihi geçince otomatik silinir"
+    )
+
+    if not email:
+        track_text += (
+            "\n\n📧 <b>Fiyat düşünce e-posta da gönderelim mi?</b>\n"
+            "E-posta adresini yaz, bildirimleri oraya da yollayalım.\n"
+            "<i>Atlamak için herhangi bir şey yaz.</i>"
+        )
+        context.user_data["awaiting_email"] = True
+
+    await query.message.edit_text(
+        track_text,
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
+
+
+async def handle_email_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if not context.user_data.get("awaiting_email"):
+        return False
+
+    context.user_data.pop("awaiting_email", None)
+    text = update.message.text.strip()
+
+    if re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', text):
+        await save_user_email(update.effective_user.id, text)
+        await update.message.reply_text(
+            f"✅ E-posta kaydedildi: <b>{text}</b>\n"
+            "Fiyat değişikliklerinde seni bilgilendireceğiz!",
+            parse_mode="HTML",
+        )
+    else:
+        await update.message.reply_text(
+            "👍 Tamam, e-posta atlandı. Başka bir şey sormak istersen yaz!",
+            parse_mode="HTML",
+        )
+    return True
 
 
 async def track_no_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -46,8 +46,15 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS bot_users (
                 user_id BIGINT PRIMARY KEY,
                 username TEXT,
-                message_count INTEGER DEFAULT 1
+                message_count INTEGER DEFAULT 1,
+                email TEXT
             )
+        """)
+        await conn.execute("""
+            DO $$ BEGIN
+                ALTER TABLE bot_users ADD COLUMN email TEXT;
+            EXCEPTION WHEN duplicate_column THEN NULL;
+            END $$;
         """)
 
 
@@ -134,6 +141,22 @@ async def expire_past_flights() -> int:
             "DELETE FROM tracked_flights WHERE depart_date::date < CURRENT_DATE"
         )
         return int(result.split()[-1])
+
+
+async def get_user_email(user_id: int) -> str | None:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT email FROM bot_users WHERE user_id = $1", user_id
+        )
+
+
+async def save_user_email(user_id: int, email: str):
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE bot_users SET email = $1 WHERE user_id = $2", email, user_id
+        )
 
 
 async def upsert_user(user_id: int, username: str | None = None):
