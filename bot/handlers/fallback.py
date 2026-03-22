@@ -42,6 +42,22 @@ def _track_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+def _append_cheapest_to_history(context, data: list[dict], origin: str, dest: str,
+                                direct: bool = False):
+    if not data:
+        return
+    valid = [d for d in data if d.get("price", 0) > 0]
+    if not valid:
+        return
+    cheapest = min(valid, key=lambda d: d["price"])
+    direct_label = " (aktarmasız)" if direct else ""
+    note = (f"[Takvim sonucu{direct_label}: {origin}→{dest}, "
+            f"en ucuz gün {cheapest['date']} — {cheapest['price']:,}₺]")
+    history = context.user_data.get("chat_history", [])
+    if history and history[-1]["role"] == "assistant":
+        history[-1]["text"] += f"\n{note}"
+
+
 SEARCH_STATUS = {
     "search_flight": "🔍 Uçuş fiyatlarına bakıyorum...",
     "show_popular": "🌍 Popüler rotaları araştırıyorum...",
@@ -95,7 +111,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == "show_popular":
             await _do_popular(update, result, ai_message, thinking_msg)
         elif action == "show_direct":
-            await _do_direct(update, result, ai_message, thinking_msg)
+            await _do_direct(update, context, result, ai_message, thinking_msg)
         elif action == "show_trends":
             await _do_trends(update, result, ai_message, thinking_msg)
         elif action == "list_flights":
@@ -108,7 +124,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif action == "show_latest":
             await _do_latest(update, result, ai_message, thinking_msg)
         elif action == "show_calendar":
-            await _do_calendar(update, result, ai_message, thinking_msg)
+            await _do_calendar(update, context, result, ai_message, thinking_msg)
         else:
             await thinking_msg.edit_text(ai_message, parse_mode="HTML")
     except Exception as e:
@@ -190,7 +206,8 @@ async def _do_popular(update: Update, result: dict, ai_message: str, status_msg=
         await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _do_direct(update: Update, result: dict, ai_message: str, status_msg=None):
+async def _do_direct(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                     result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     destination = _safe_upper(result.get("destination"))
     month = (result.get("month") or "").strip()
@@ -205,6 +222,8 @@ async def _do_direct(update: Update, result: dict, ai_message: str, status_msg=N
     direct = await get_direct_flights(origin, destination, month)
     text = await format_direct_flights(direct, origin, destination)
     final = f"{ai_message}\n\n{text}"
+
+    _append_cheapest_to_history(context, direct, origin, destination, direct=True)
 
     if status_msg:
         await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
@@ -291,7 +310,8 @@ async def _do_latest(update: Update, result: dict, ai_message: str, status_msg=N
         await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _do_calendar(update: Update, result: dict, ai_message: str, status_msg=None):
+async def _do_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                       result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     dest = _safe_upper(result.get("destination"))
     month = (result.get("month") or "").strip()
@@ -307,6 +327,8 @@ async def _do_calendar(update: Update, result: dict, ai_message: str, status_msg
     data = await get_calendar_prices(origin, dest, month, direct=direct_only)
     text = format_calendar(data, origin, dest, month, direct_only)
     final = f"{ai_message}\n\n{text}"
+
+    _append_cheapest_to_history(context, data, origin, dest, direct_only)
 
     if status_msg:
         await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
