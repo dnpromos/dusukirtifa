@@ -252,9 +252,12 @@ async def _do_calendar(update: Update, result: dict, ai_message: str):
         await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
-    data = await get_month_matrix(origin, dest, month)
     if direct_only:
-        data = [d for d in data if d.get("transfers", 1) == 0]
+        raw = await get_direct_flights(origin, dest, month)
+        data = [{"date": d["date"], "price": d["price"], "transfers": 0,
+                 "duration": d.get("duration", 0)} for d in raw]
+    else:
+        data = await get_month_matrix(origin, dest, month)
     text = format_calendar(data, origin, dest, month, direct_only)
 
     await update.message.reply_text(
