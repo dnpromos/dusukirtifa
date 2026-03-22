@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, constants
 from telegram.ext import ContextTypes
@@ -23,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 def _safe_upper(val) -> str:
     return (val or "").strip().upper()
+
+
+def _md_to_html(text: str) -> str:
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
+    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    text = text.replace('### ', '').replace('## ', '').replace('# ', '')
+    return text
 
 
 def _track_keyboard() -> InlineKeyboardMarkup:
@@ -61,7 +70,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    ai_message = result.get("message", "")
+    ai_message = _md_to_html(result.get("message", ""))
     history.append({"role": "user", "text": text})
 
     assistant_entry = {"role": "assistant", "text": ai_message}
