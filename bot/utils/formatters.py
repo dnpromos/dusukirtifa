@@ -56,15 +56,16 @@ async def format_flight_card(flight: dict, price_data: dict | None = None,
         else:
             lines.append("➡️ Fiyat değişmedi")
 
-    if stats:
-        lines.append("")
-        lines.append("📊 <b>Aylık İstatistikler:</b>")
-        lines.append(f"   En düşük: {stats['min']:,} ₺")
-        lines.append(f"   En yüksek: {stats['max']:,} ₺")
-        lines.append(f"   Ortalama: {stats['avg']:,.2f} ₺")
-        if stats.get("direct_min"):
-            lines.append(f"   Aktarmasız en düşük: {stats['direct_min']:,} ₺")
-        lines.append(f"   Bulunan bilet: {stats['count']}")
+    if stats and stats.get("avg") and price_data and price_data.get("price"):
+        avg = stats["avg"]
+        current = price_data["price"]
+        pct = ((current - avg) / avg) * 100
+        if pct < -5:
+            lines.append(f"📊 30 gün ort: {avg:,.0f}₺ — <b>%{abs(pct):.0f} daha ucuz</b> 🟢")
+        elif pct > 5:
+            lines.append(f"📊 30 gün ort: {avg:,.0f}₺ — <b>%{abs(pct):.0f} daha pahalı</b> 🔴")
+        else:
+            lines.append(f"📊 30 gün ort: {avg:,.0f}₺ — ortalama fiyat 🟡")
 
     purchase_url = await build_search_link(origin, dest, depart, ret, sub_id="card")
     lines.append(f"\n🛒 <a href='{purchase_url}'>Şimdi Satın Al</a>")

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -170,14 +171,23 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
         "return_date": return_date,
     }
 
-    price_data = await get_cheapest_prices(origin, destination, depart_date, return_date,
-                                           direct=direct)
+    month = depart_date[:7]
+    price_data, month_prices = await asyncio.gather(
+        get_cheapest_prices(origin, destination, depart_date, return_date, direct=direct),
+        get_calendar_prices(origin, destination, month, direct=direct),
+    )
+
+    stats = None
+    if month_prices:
+        valid = [d["price"] for d in month_prices if d.get("price", 0) > 0]
+        if valid:
+            stats = {"avg": sum(valid) / len(valid)}
 
     flight_info = {
         "origin": origin, "destination": destination,
         "depart_date": depart_date, "return_date": return_date,
     }
-    card = await format_flight_card(flight_info, price_data)
+    card = await format_flight_card(flight_info, price_data, stats=stats)
 
     final_text = (f"{ai_message}\n\n{card}\n\n"
                   "📌 <b>Bu uçuşu takibe almak ister misin?</b>")
