@@ -10,6 +10,7 @@ from bot.services.aviasales import (
     get_cheapest_prices, get_popular_routes,
     get_direct_flights, get_trend_data,
     get_latest_prices, get_month_matrix,
+    get_calendar_prices,
 )
 from bot.services.database import add_flight, get_user_flights, remove_flight
 from bot.utils.formatters import (
@@ -310,12 +311,7 @@ async def _do_calendar(update: Update, result: dict, ai_message: str, status_msg
             await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
-    if direct_only:
-        raw = await get_direct_flights(origin, dest, month)
-        data = [{"date": d["date"], "price": d["price"], "transfers": 0,
-                 "duration": d.get("duration", 0)} for d in raw]
-    else:
-        data = await get_month_matrix(origin, dest, month)
+    data = await get_calendar_prices(origin, dest, month, direct=direct_only)
     text = format_calendar(data, origin, dest, month, direct_only)
     final = f"{ai_message}\n\n{text}"
 

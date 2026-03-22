@@ -229,6 +229,47 @@ async def get_direct_flights(origin: str, destination: str,
     return results
 
 
+async def get_calendar_prices(origin: str, destination: str,
+                              month: str, direct: bool = False,
+                              client: httpx.AsyncClient | None = None) -> list[dict]:
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "depart_date": month,
+        "currency": CURRENCY,
+        "sorting": "price",
+        "limit": "1000",
+    }
+    if direct:
+        params["direct"] = "true"
+
+    url = f"{AVIASALES_BASE_URL}/aviasales/v3/prices_for_dates"
+
+    if client:
+        data = await _get(client, url, params)
+    else:
+        async with httpx.AsyncClient() as c:
+            data = await _get(c, url, params)
+
+    if not data or not data.get("success") or not data.get("data"):
+        return []
+
+    seen_dates: dict[str, dict] = {}
+    for p in data["data"]:
+        dep = (p.get("departure_at") or "")[:10]
+        if not dep or dep in seen_dates:
+            continue
+        seen_dates[dep] = {
+            "date": dep,
+            "price": p.get("price", 0),
+            "transfers": p.get("transfers", 0),
+            "duration": p.get("duration_to", 0) or p.get("duration", 0),
+            "airline": p.get("airline", ""),
+        }
+
+    return sorted(seen_dates.values(), key=lambda x: x["date"])
+
+
 async def get_latest_prices(origin: str,
                             destination: str | None = None,
                             client: httpx.AsyncClient | None = None) -> list[dict]:
