@@ -294,12 +294,16 @@ def _raw_aviasales_url(link_path: str) -> str:
     return f"{base}{sep}currency=try&locale=tr"
 
 
+def _to_ddmm(date_str: str) -> str:
+    parts = date_str.split("-")
+    return f"{parts[2]}{parts[1]}"
+
+
 def _raw_search_url(origin: str, destination: str, depart_date: str,
                     return_date: str | None = None) -> str:
-    date_part = depart_date.replace("-", "")
-    path = f"{origin}{date_part}{destination}"
+    path = f"{origin}{_to_ddmm(depart_date)}{destination}"
     if return_date:
-        path += return_date.replace("-", "")
+        path += _to_ddmm(return_date)
     return f"https://www.aviasales.com/search/{path}1?currency=try&locale=tr"
 
 
