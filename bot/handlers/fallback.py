@@ -32,6 +32,16 @@ def _track_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
+SEARCH_STATUS = {
+    "search_flight": "🔍 Uçuş fiyatlarına bakıyorum...",
+    "show_popular": "🌍 Popüler rotaları araştırıyorum...",
+    "show_direct": "✈️ Aktarmasız uçuşlara bakıyorum...",
+    "show_trends": "📈 Fiyat trendlerini inceliyorum...",
+    "show_latest": "🔥 Son bulunan biletleri getiriyorum...",
+    "show_calendar": "📅 Fiyat takvimini hazırlıyorum...",
+}
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     if not text:
@@ -62,28 +72,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history.append(assistant_entry)
     context.user_data["chat_history"] = history
 
+    status_text = SEARCH_STATUS.get(action)
+    status_msg = None
+    if status_text:
+        status_msg = await update.message.reply_text(
+            f"{ai_message}\n\n{status_text}",
+            parse_mode="HTML",
+        )
+
     try:
         if action == "search_flight":
-            await _do_search(update, context, result, ai_message)
+            await _do_search(update, context, result, ai_message, status_msg)
         elif action == "show_popular":
-            await _do_popular(update, result, ai_message)
+            await _do_popular(update, result, ai_message, status_msg)
         elif action == "show_direct":
-            await _do_direct(update, result, ai_message)
+            await _do_direct(update, result, ai_message, status_msg)
         elif action == "show_trends":
-            await _do_trends(update, result, ai_message)
+            await _do_trends(update, result, ai_message, status_msg)
         elif action == "list_flights":
             await _do_list(update, ai_message)
         elif action == "remove_flight":
             await _do_remove(update, result, ai_message)
         elif action == "show_latest":
-            await _do_latest(update, result, ai_message)
+            await _do_latest(update, result, ai_message, status_msg)
         elif action == "show_calendar":
-            await _do_calendar(update, result, ai_message)
+            await _do_calendar(update, result, ai_message, status_msg)
         else:
             await update.message.reply_text(ai_message, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Action '{action}' failed: {e}")
-        if ai_message:
+        if status_msg:
+            try:
+                await status_msg.edit_text(
+                    ai_message or "⚠️ İşlem sırasında hata oluştu, tekrar dener misin?",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+        elif ai_message:
             await update.message.reply_text(ai_message, parse_mode="HTML")
         else:
             await update.message.reply_text(
@@ -92,7 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                     result: dict, ai_message: str):
+                     result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     destination = _safe_upper(result.get("destination"))
     depart_date = (result.get("depart_date") or "").strip()
@@ -101,7 +127,10 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return_date = None
 
     if not origin or not destination or not depart_date:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
     context.user_data["pending_flight"] = {
@@ -111,7 +140,6 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
         "return_date": return_date,
     }
 
-    await update.effective_chat.send_action(constants.ChatAction.TYPING)
     price_data = await get_cheapest_prices(origin, destination, depart_date, return_date)
 
     flight_info = {
@@ -120,70 +148,83 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
     }
     card = await format_flight_card(flight_info, price_data)
 
-    await update.message.reply_text(
-        f"{ai_message}\n\n{card}\n\n"
-        "📌 <b>Bu uçuşu takibe almak ister misin?</b>",
-        parse_mode="HTML",
-        reply_markup=_track_keyboard(),
-        disable_web_page_preview=True,
-    )
+    final_text = (f"{ai_message}\n\n{card}\n\n"
+                  "📌 <b>Bu uçuşu takibe almak ister misin?</b>")
+    if status_msg:
+        await status_msg.edit_text(
+            final_text, parse_mode="HTML",
+            reply_markup=_track_keyboard(),
+            disable_web_page_preview=True,
+        )
+    else:
+        await update.message.reply_text(
+            final_text, parse_mode="HTML",
+            reply_markup=_track_keyboard(),
+            disable_web_page_preview=True,
+        )
 
 
-async def _do_popular(update: Update, result: dict, ai_message: str):
+async def _do_popular(update: Update, result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     if not origin:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
-    await update.effective_chat.send_action(constants.ChatAction.TYPING)
     routes = await get_popular_routes(origin)
     text = await format_popular_routes(routes, origin)
+    final = f"{ai_message}\n\n{text}"
 
-    await update.message.reply_text(
-        f"{ai_message}\n\n{text}",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    if status_msg:
+        await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _do_direct(update: Update, result: dict, ai_message: str):
+async def _do_direct(update: Update, result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     destination = _safe_upper(result.get("destination"))
     month = (result.get("month") or "").strip()
 
     if not origin or not destination or not month:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
-    await update.effective_chat.send_action(constants.ChatAction.TYPING)
     direct = await get_direct_flights(origin, destination, month)
     text = await format_direct_flights(direct, origin, destination)
+    final = f"{ai_message}\n\n{text}"
 
-    await update.message.reply_text(
-        f"{ai_message}\n\n{text}",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    if status_msg:
+        await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _do_trends(update: Update, result: dict, ai_message: str):
+async def _do_trends(update: Update, result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     destination = _safe_upper(result.get("destination"))
     month = (result.get("month") or "").strip()
 
     if not origin or not destination or not month:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
-    await update.effective_chat.send_action(constants.ChatAction.TYPING)
     trend = await get_trend_data(origin, destination, month)
     text = format_trend(trend, origin, destination)
+    final = f"{ai_message}\n\n{text}"
 
-    await update.message.reply_text(
-        f"{ai_message}\n\n{text}",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    if status_msg:
+        await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def _do_list(update: Update, ai_message: str):
@@ -224,32 +265,38 @@ async def _do_remove(update: Update, result: dict, ai_message: str):
         )
 
 
-async def _do_latest(update: Update, result: dict, ai_message: str):
+async def _do_latest(update: Update, result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     destination = _safe_upper(result.get("destination")) or None
 
     if not origin:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
     prices = await get_latest_prices(origin, destination)
     text = await format_latest_prices(prices, origin)
+    final = f"{ai_message}\n\n{text}"
 
-    await update.message.reply_text(
-        f"{ai_message}\n\n{text}",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    if status_msg:
+        await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
-async def _do_calendar(update: Update, result: dict, ai_message: str):
+async def _do_calendar(update: Update, result: dict, ai_message: str, status_msg=None):
     origin = _safe_upper(result.get("origin"))
     dest = _safe_upper(result.get("destination"))
     month = (result.get("month") or "").strip()
     direct_only = bool(result.get("direct"))
 
     if not origin or not dest or not month:
-        await update.message.reply_text(ai_message, parse_mode="HTML")
+        if status_msg:
+            await status_msg.edit_text(ai_message, parse_mode="HTML")
+        else:
+            await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
     if direct_only:
@@ -259,12 +306,12 @@ async def _do_calendar(update: Update, result: dict, ai_message: str):
     else:
         data = await get_month_matrix(origin, dest, month)
     text = format_calendar(data, origin, dest, month, direct_only)
+    final = f"{ai_message}\n\n{text}"
 
-    await update.message.reply_text(
-        f"{ai_message}\n\n{text}",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+    if status_msg:
+        await status_msg.edit_text(final, parse_mode="HTML", disable_web_page_preview=True)
+    else:
+        await update.message.reply_text(final, parse_mode="HTML", disable_web_page_preview=True)
 
 
 async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
