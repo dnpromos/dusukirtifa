@@ -12,7 +12,7 @@ from bot.services.aviasales import (
     get_latest_prices, get_month_matrix,
     get_calendar_prices,
 )
-from bot.services.database import add_flight, get_user_flights, remove_flight
+from bot.services.database import add_flight, get_user_flights, remove_flight, upsert_user
 from bot.utils.formatters import (
     format_flight_card, format_flight_list, format_popular_routes,
     format_direct_flights, format_trend, format_latest_prices,
@@ -79,6 +79,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     history = context.user_data.get("chat_history", [])
+
+    user = update.effective_user
+    await upsert_user(user.id, user.username)
 
     thinking_msg = await update.message.reply_text("💭 Düşünüyorum...")
 

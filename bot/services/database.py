@@ -42,6 +42,13 @@ async def init_db():
                 EXCEPTION WHEN duplicate_column THEN NULL;
                 END $$;
             """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS bot_users (
+                user_id BIGINT PRIMARY KEY,
+                username TEXT,
+                message_count INTEGER DEFAULT 1
+            )
+        """)
 
 
 async def add_flight(user_id: int, chat_id: int, origin: str, destination: str,
@@ -127,6 +134,18 @@ async def expire_past_flights() -> int:
             "DELETE FROM tracked_flights WHERE depart_date::date < CURRENT_DATE"
         )
         return int(result.split()[-1])
+
+
+async def upsert_user(user_id: int, username: str | None = None):
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO bot_users (user_id, username, message_count)
+            VALUES ($1, $2, 1)
+            ON CONFLICT (user_id) DO UPDATE
+            SET username = COALESCE($2, bot_users.username),
+                message_count = bot_users.message_count + 1
+        """, user_id, username)
 
 
 async def update_flight_price(flight_id: int, price: float):
