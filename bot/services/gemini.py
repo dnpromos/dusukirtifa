@@ -134,7 +134,7 @@ GENEL KURALLAR:
 - "Hangi gün ucuz?", "Takvimi göster" → "show_calendar"
 - "Aktarmasız uçuşlar takvimi" → "show_calendar" ile "direct": true kullan.
 - "Aktarmasız bilet bul", "Direkt uçuş istiyorum" → "search_flight" ile "direct": true kullan.
-- Önceki aramada aktarmasız uçuş gösterilmişse ve kullanıcı detay istiyorsa → "direct": true koru.
+- Önceki aramada aktarmasız uçuş/takvim gösterilmişse ve kullanıcı o sonuçlarla ilgili detay, bilet veya arama istiyorsa → "direct": true MUTLAKA ekle. Sohbet geçmişinde "aktarmasız" veya "direct" geçen takvim sonucu varsa direct=true kullan.
 - Kısa ve öz cevaplar ver. Gereksiz uzatma.
 - Doğal Türkçe yaz, emoji kullanabilirsin.
 
@@ -147,7 +147,7 @@ TAKİP EDEN ARAMALAR VE BAĞLAM:
 - Kullanıcı senin önerdiğin bir şehri seçip "fiyat bak" derse → Hemen ilgili API aksiyonunu çağır.
 """
 
-MAX_HISTORY = 10
+MAX_HISTORY = 30
 POLL_INTERVAL = 0.4
 MAX_POLL_ATTEMPTS = 25
 WEBHOOK_TIMEOUT = 12.0

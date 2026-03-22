@@ -50,9 +50,14 @@ def _append_cheapest_to_history(context, data: list[dict], origin: str, dest: st
     if not valid:
         return
     cheapest = min(valid, key=lambda d: d["price"])
-    direct_label = " (aktarmasız)" if direct else ""
-    note = (f"[Takvim sonucu{direct_label}: {origin}→{dest}, "
-            f"en ucuz gün {cheapest['date']} — {cheapest['price']:,}₺]")
+    if direct:
+        note = (f"[Takvim sonucu (AKTARMASIZ): {origin}→{dest}, "
+                f"en ucuz gün {cheapest['date']} — {cheapest['price']:,}₺. "
+                f"Bu sonuçlar aktarmasız uçuşlar için. Kullanıcı bu sonuçlardan bilet detayı isterse "
+                f"search_flight ile direct=true kullan!]")
+    else:
+        note = (f"[Takvim sonucu: {origin}→{dest}, "
+                f"en ucuz gün {cheapest['date']} — {cheapest['price']:,}₺]")
     history = context.user_data.get("chat_history", [])
     if history and history[-1]["role"] == "assistant":
         history[-1]["text"] += f"\n{note}"
