@@ -167,6 +167,40 @@ async def format_direct_flights(flights: list[dict], origin: str, dest: str) -> 
     return "\n".join(lines)
 
 
+async def format_smart_alert(flight: dict, price_data: dict,
+                             diff: float, days_until: int) -> str:
+    origin = flight["origin"]
+    dest = flight["destination"]
+    depart = flight["depart_date"]
+    new_price = price_data["price"]
+    lowest = flight.get("lowest_price")
+
+    if diff < 0:
+        emoji = "📉"
+        change = f"<b>{abs(diff):,.0f}₺ düştü!</b>"
+    else:
+        emoji = "📈"
+        change = f"<b>{diff:,.0f}₺ arttı</b>"
+
+    lines = [
+        f"{emoji} <b>{origin} → {dest}</b> ({depart})",
+        f"💰 Fiyat: <b>{new_price:,.0f}₺</b> ({change})",
+    ]
+
+    if lowest:
+        lines.append(f"⭐ En düşük: {lowest:,.0f}₺")
+
+    if days_until <= 7:
+        lines.append(f"⚡ <b>Uçuşa {days_until} gün kaldı!</b>")
+    elif days_until <= 14:
+        lines.append(f"⏰ Uçuşa {days_until} gün kaldı")
+
+    url = await build_search_link(origin, dest, depart, flight.get("return_date"), sub_id="alert")
+    lines.append(f"🛒 <a href='{url}'>Satın Al</a>")
+
+    return "\n".join(lines)
+
+
 def format_flight_list(flights: list[dict]) -> str:
     if not flights:
         return "📭 Henüz takip ettiğiniz uçuş yok."

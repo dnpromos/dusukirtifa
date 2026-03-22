@@ -99,7 +99,15 @@ Kurallar:
 - "X numaralı uçuşu sil/kaldır" → "remove_flight" kullan.
 - Kısa ve öz cevaplar ver. Gereksiz uzatma.
 - Doğal Türkçe yaz, emoji kullanabilirsin.
-- Sohbet geçmişine bak ve bağlamı koru. Önceki mesajlardaki bilgileri kullan.
+
+ÇOK ÖNEMLİ — Takip eden aramalar ve bağlam:
+- Sohbet geçmişini DİKKATLE oku. Önceki aramalardaki kalkış, varış, tarih bilgilerini hatırla.
+- "Dönüş bileti bul" veya "bir hafta sonra dönüş" → Önceki aramanın TERS rotasını (origin↔destination) ve yeni tarihi kullan.
+  Örnek: Önceki arama IST→AYT 15 Haziran ise, "bir hafta sonra dönüş" = AYT→IST 22 Haziran.
+- "Aynısını ama temmuzda" → Aynı rota, yeni ay.
+- "Başka tarih" veya "2 gün sonrası" → Önceki rotayı koru, tarihi güncelle.
+- "Başka havalimanından" → Varışı koru, kalkışı değiştir.
+- Her takip sorusunda mutlaka search_flight aksiyonu üret, aynı aramayı tekrar etme.
 """
 
 MAX_HISTORY = 10

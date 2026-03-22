@@ -1,3 +1,4 @@
+import json
 import logging
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, constants
@@ -50,10 +51,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ai_message = result.get("message", "")
     history.append({"role": "user", "text": text})
-    history.append({"role": "assistant", "text": ai_message})
-    context.user_data["chat_history"] = history
 
+    assistant_entry = {"role": "assistant", "text": ai_message}
     action = result.get("action", "chat")
+    if action != "chat":
+        params = {k: v for k, v in result.items() if k != "message"}
+        assistant_entry["text"] = f"{ai_message}\n[Aksiyon: {json.dumps(params, ensure_ascii=False)}]"
+    history.append(assistant_entry)
+    context.user_data["chat_history"] = history
 
     try:
         if action == "search_flight":
@@ -259,7 +264,12 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     card = await format_flight_card(flight, price_data)
 
     await query.message.edit_text(
-        f"✅ Takibe alındı! Her gün fiyat bildirimi alacaksın.\n\n{card}",
+        f"✅ Takibe alındı!\n\n{card}\n\n"
+        "📋 <b>Takip nasıl çalışır?</b>\n"
+        "• Fiyat %10'dan fazla değişirse anında bildirim\n"
+        "• Uçuşa 7 günden az kaldığında günlük kontrol\n"
+        "• Her pazartesi haftalık özet rapor\n"
+        "• Uçuş tarihi geçince otomatik silinir",
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
