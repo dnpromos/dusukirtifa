@@ -141,28 +141,33 @@ async def format_direct_flights(flights: list[dict], origin: str, dest: str) -> 
         return (f"📭 <b>{origin} → {dest}</b> için aktarmasız uçuş bulunamadı.\n"
                 "Bu rotada direkt sefer olmayabilir.")
 
+    prices = [f["price"] for f in flights if f.get("price", 0) > 0]
+    min_price = min(prices) if prices else 0
+
     lines = [f"✈️ <b>Aktarmasız Uçuşlar: {origin} → {dest}</b>\n"]
 
-    for f in flights[:15]:
+    for f in flights:
         date = f["date"]
         price = f["price"]
+        if price <= 0:
+            continue
+
+        day = date[8:10] if len(date) >= 10 else date
+        star = " ⭐" if price == min_price else ""
         airline_name = get_airline_name(f.get("airline", ""))
         duration = _format_duration(f.get("duration", 0))
 
-        line = f"  📅 {date}  —  <b>{price:,} ₺</b>"
         details = []
         if airline_name:
             details.append(airline_name)
         if duration:
             details.append(duration)
-        line += f"\n       {' · '.join(details)}"
+        detail_str = f" · {' · '.join(details)}" if details else ""
 
-        link = f.get("link", "")
-        if link:
-            purchase_url = await build_purchase_link(link, sub_id="direct")
-            line += f"  <a href='{purchase_url}'>Satın Al</a>"
+        lines.append(f"  {day} — <b>{price:,}₺</b> ✈️{detail_str}{star}")
 
-        lines.append(line)
+    if min_price:
+        lines.append(f"\n⭐ En ucuz gün: <b>{min_price:,}₺</b>")
 
     return "\n".join(lines)
 
