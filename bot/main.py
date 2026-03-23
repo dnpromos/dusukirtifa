@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 async def post_init(app: Application):
+    await app.bot.delete_webhook(drop_pending_updates=True)
     await init_db()
     await load_airlines()
     await start_webhook_server()
