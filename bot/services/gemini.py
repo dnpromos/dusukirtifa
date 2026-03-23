@@ -145,7 +145,7 @@ TAKİP EDEN ARAMALAR VE BAĞLAM:
 - Kullanıcı senin önerdiğin bir şehri seçip "fiyat bak" derse → Hemen ilgili API aksiyonunu çağır.
 """
 
-MAX_HISTORY = 30
+MAX_HISTORY = 15
 POLL_INTERVAL = 0.4
 MAX_POLL_ATTEMPTS = 25
 WEBHOOK_TIMEOUT = 12.0
@@ -176,7 +176,7 @@ async def _submit_task(client: httpx.AsyncClient, prompt: str,
     form_data = {
         "prompt": prompt,
         "systemInstructions": system_instructions,
-        "thinkingLevel": "medium",
+        "thinkingLevel": "low",
         "maxOutputTokens": 2048,
     }
     if callback_url:

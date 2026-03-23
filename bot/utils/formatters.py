@@ -274,17 +274,45 @@ async def format_smart_alert(flight: dict, price_data: dict,
     return "\n".join(lines)
 
 
+EMOJI_NUMS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+
 def format_flight_list(flights: list[dict]) -> str:
     if not flights:
-        return "📭 Henüz takip ettiğiniz uçuş yok."
+        return "📭 Henüz takip ettiğin uçuş yok.\nUçuş arayıp takibe alabilirsin!"
 
-    lines = ["📋 <b>Takip ettiğiniz uçuşlar:</b>\n"]
-    for i, f in enumerate(flights, 1):
-        ret_str = f" ↩ {f['return_date']}" if f.get("return_date") else ""
-        price_str = f" — Son fiyat: {f['last_price']:,.0f} ₺" if f.get("last_price") else ""
+    from datetime import date
+    today = date.today()
+
+    lines = [f"📋 <b>Takip Listesi</b> ({len(flights)}/{3})\n"]
+    for i, f in enumerate(flights):
+        emoji = EMOJI_NUMS[i] if i < len(EMOJI_NUMS) else f"{i+1}."
+        ret_str = f"\n📅 Dönüş: {f['return_date']}" if f.get("return_date") else ""
+
+        try:
+            dep = date.fromisoformat(f["depart_date"])
+            days = (dep - today).days
+            if days < 0:
+                days_str = "⚠️ Geçmiş"
+            elif days == 0:
+                days_str = "🔥 Bugün!"
+            elif days <= 7:
+                days_str = f"🔥 {days} gün kaldı"
+            else:
+                days_str = f"📆 {days} gün kaldı"
+        except ValueError:
+            days_str = ""
+
+        price_lines = ""
+        if f.get("last_price"):
+            price_lines += f"\n💰 Son fiyat: <b>{f['last_price']:,.0f}₺</b>"
+        if f.get("lowest_price"):
+            price_lines += f" (en düşük: {f['lowest_price']:,.0f}₺)"
+
         lines.append(
-            f"  {i}. <b>{f['origin']} → {f['destination']}</b>\n"
-            f"     📅 {f['depart_date']}{ret_str}{price_str}\n"
-            f"     🆔 ID: <code>{f['id']}</code>"
+            f"{emoji} <b>{f['origin']} → {f['destination']}</b>"
+            f"\n📅 Gidiş: {f['depart_date']}{ret_str}"
+            f"\n{days_str}{price_lines}"
+            f"\n🗑 Silmek için: <code>sil {f['id']}</code>\n"
         )
     return "\n".join(lines)
