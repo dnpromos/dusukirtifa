@@ -78,6 +78,9 @@ SEARCH_STATUS = {
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import time as _time
+    t0 = _time.monotonic()
+
     text = update.message.text.strip()
     if not text:
         return
@@ -89,9 +92,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
     await upsert_user(user.id, user.username)
+    logger.info(f"⏱ db: {_time.monotonic() - t0:.2f}s | hist={len(history)}")
 
     thinking_msg = await update.message.reply_text("💭 Düşünüyorum...")
 
+    t1 = _time.monotonic()
     try:
         result = await gemini_chat(text, history)
     except Exception as e:
@@ -101,6 +106,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         return
+    t2 = _time.monotonic()
+    logger.info(f"⏱ ai: {t2 - t1:.2f}s")
 
     ai_message = _md_to_html(result.get("message", ""))
     history.append({"role": "user", "text": text})
@@ -152,6 +159,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    logger.info(f"⏱ TOTAL: {_time.monotonic() - t0:.2f}s | action={action} | api: {_time.monotonic() - t2:.2f}s")
+
 
 async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
                      result: dict, ai_message: str, status_msg=None):
@@ -170,13 +179,6 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
             await update.message.reply_text(ai_message, parse_mode="HTML")
         return
 
-    context.user_data["pending_flight"] = {
-        "origin": origin,
-        "destination": destination,
-        "depart_date": depart_date,
-        "return_date": return_date,
-    }
-
     month = depart_date[:7]
     price_data, month_prices = await asyncio.gather(
         get_cheapest_prices(origin, destination, depart_date, return_date, direct=direct),
@@ -194,6 +196,14 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
         "depart_date": depart_date, "return_date": return_date,
     }
     card = await format_flight_card(flight_info, price_data, stats=stats)
+
+    context.user_data["pending_flight"] = {
+        "origin": origin,
+        "destination": destination,
+        "depart_date": depart_date,
+        "return_date": return_date,
+        "card": card,
+    }
 
     final_text = (f"{ai_message}\n\n{card}\n\n"
                   "📌 <b>Bu uçuşu takibe almak ister misin?</b>")
@@ -372,63 +382,64 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return
 
-    user_flights = await get_user_flights(query.from_user.id)
-    if len(user_flights) >= MAX_TRACKED_FLIGHTS:
-        await query.edit_message_text(
-            f"⚠️ En fazla <b>{MAX_TRACKED_FLIGHTS}</b> uçuş takip edebilirsin.\n"
-            "<i>\"Takiplerimi göster\" yazarak mevcut takiplerini görebilirsin.</i>",
+    try:
+        user_flights = await get_user_flights(query.from_user.id)
+        if len(user_flights) >= MAX_TRACKED_FLIGHTS:
+            await query.edit_message_text(
+                f"⚠️ En fazla <b>{MAX_TRACKED_FLIGHTS}</b> uçuş takip edebilirsin.\n"
+                "<i>\"Takiplerimi göster\" yazarak mevcut takiplerini görebilirsin.</i>",
+                parse_mode="HTML",
+            )
+            return
+
+        flight_id = await add_flight(
+            query.from_user.id,
+            query.message.chat_id,
+            pending["origin"],
+            pending["destination"],
+            pending["depart_date"],
+            pending.get("return_date"),
+        )
+        context.user_data.pop("pending_flight", None)
+
+        if flight_id is None:
+            await query.edit_message_text(
+                "⚠️ Uçuş eklenemedi, tekrar dener misin?",
+                parse_mode="HTML",
+            )
+            return
+
+        card = pending.get("card", f"✈️ {pending['origin']} → {pending['destination']}")
+        email = await get_user_email(query.from_user.id)
+
+        track_text = (
+            f"✅ Takibe alındı!\n\n{card}\n\n"
+            "📋 <b>Takip nasıl çalışır?</b>\n"
+            "• Fiyat %10'dan fazla değişirse anında bildirim\n"
+            "• Uçuşa 7 günden az kaldığında günlük kontrol\n"
+            "• Her pazartesi haftalık özet rapor\n"
+            "• Uçuş tarihi geçince otomatik silinir"
+        )
+
+        if not email:
+            track_text += (
+                "\n\n📧 <b>Fiyat düşünce e-posta da gönderelim mi?</b>\n"
+                "E-posta adresini yaz, bildirimleri oraya da yollayalım.\n"
+                "<i>Atlamak için herhangi bir şey yaz.</i>"
+            )
+            context.user_data["awaiting_email"] = True
+
+        await query.message.edit_text(
+            track_text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    except Exception as e:
+        logger.error(f"track_yes_callback error: {e}")
+        await query.message.edit_text(
+            "⚠️ Bir hata oluştu, tekrar dener misin?",
             parse_mode="HTML",
         )
-        return
-
-    flight_id = await add_flight(
-        query.from_user.id,
-        query.message.chat_id,
-        pending["origin"],
-        pending["destination"],
-        pending["depart_date"],
-        pending.get("return_date"),
-    )
-    context.user_data.pop("pending_flight", None)
-
-    if flight_id is None:
-        await query.edit_message_text(
-            "⚠️ Uçuş eklenemedi, tekrar dener misin?",
-            parse_mode="HTML",
-        )
-        return
-
-    price_data = await get_cheapest_prices(
-        pending["origin"], pending["destination"],
-        pending["depart_date"], pending.get("return_date"),
-    )
-    flight = {**pending, "id": flight_id}
-    card = await format_flight_card(flight, price_data)
-
-    email = await get_user_email(query.from_user.id)
-
-    track_text = (
-        f"✅ Takibe alındı!\n\n{card}\n\n"
-        "📋 <b>Takip nasıl çalışır?</b>\n"
-        "• Fiyat %10'dan fazla değişirse anında bildirim\n"
-        "• Uçuşa 7 günden az kaldığında günlük kontrol\n"
-        "• Her pazartesi haftalık özet rapor\n"
-        "• Uçuş tarihi geçince otomatik silinir"
-    )
-
-    if not email:
-        track_text += (
-            "\n\n📧 <b>Fiyat düşünce e-posta da gönderelim mi?</b>\n"
-            "E-posta adresini yaz, bildirimleri oraya da yollayalım.\n"
-            "<i>Atlamak için herhangi bir şey yaz.</i>"
-        )
-        context.user_data["awaiting_email"] = True
-
-    await query.message.edit_text(
-        track_text,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
 
 
 async def handle_email_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
