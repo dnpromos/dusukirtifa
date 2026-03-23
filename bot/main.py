@@ -34,7 +34,7 @@ def main():
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CallbackQueryHandler(track_yes_callback, pattern="^ai_track_yes$"))
+    app.add_handler(CallbackQueryHandler(track_yes_callback, pattern="^track:"))
     app.add_handler(CallbackQueryHandler(track_no_callback, pattern="^ai_track_no$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

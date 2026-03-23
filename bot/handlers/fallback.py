@@ -39,9 +39,12 @@ def _md_to_html(text: str) -> str:
     return text
 
 
-def _track_keyboard() -> InlineKeyboardMarkup:
+def _track_keyboard(origin: str, dest: str, depart: str,
+                     return_date: str | None = None) -> InlineKeyboardMarkup:
+    ret = return_date or ""
+    data = f"track:{origin}:{dest}:{depart}:{ret}"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Takibe Al", callback_data="ai_track_yes")],
+        [InlineKeyboardButton("✅ Takibe Al", callback_data=data)],
         [InlineKeyboardButton("❌ Hayır", callback_data="ai_track_no")],
     ])
 
@@ -197,26 +200,19 @@ async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE,
     }
     card = await format_flight_card(flight_info, price_data, stats=stats)
 
-    context.user_data["pending_flight"] = {
-        "origin": origin,
-        "destination": destination,
-        "depart_date": depart_date,
-        "return_date": return_date,
-        "card": card,
-    }
-
     final_text = (f"{ai_message}\n\n{card}\n\n"
                   "📌 <b>Bu uçuşu takibe almak ister misin?</b>")
+    kb = _track_keyboard(origin, destination, depart_date, return_date)
     if status_msg:
         await status_msg.edit_text(
             final_text, parse_mode="HTML",
-            reply_markup=_track_keyboard(),
+            reply_markup=kb,
             disable_web_page_preview=True,
         )
     else:
         await update.message.reply_text(
             final_text, parse_mode="HTML",
-            reply_markup=_track_keyboard(),
+            reply_markup=kb,
             disable_web_page_preview=True,
         )
 
@@ -372,30 +368,26 @@ async def _do_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
 async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    logger.info("track_yes_callback triggered")
-
     try:
         await query.answer()
-    except Exception as e:
-        logger.error(f"track_yes: answer failed: {e}")
+    except Exception:
+        pass
 
-    pending = context.user_data.get("pending_flight")
-    logger.info(f"track_yes: pending={pending is not None}")
-
-    if not pending:
-        try:
-            await query.edit_message_text(
-                "⚠️ Takip edilecek uçuş bulunamadı. Yeni bir uçuş ara!",
-                parse_mode="HTML",
-            )
-        except Exception as e:
-            logger.error(f"track_yes: edit no-pending msg failed: {e}")
+    parts = (query.data or "").split(":")
+    if len(parts) < 4:
+        await query.edit_message_text(
+            "⚠️ Takip edilecek uçuş bulunamadı. Yeni bir uçuş ara!",
+            parse_mode="HTML",
+        )
         return
+
+    origin = parts[1].upper()
+    dest = parts[2].upper()
+    depart_date = parts[3]
+    return_date = parts[4] if len(parts) > 4 and parts[4] else None
 
     try:
         user_flights = await get_user_flights(query.from_user.id)
-        logger.info(f"track_yes: user has {len(user_flights)} flights")
-
         if len(user_flights) >= MAX_TRACKED_FLIGHTS:
             await query.edit_message_text(
                 f"⚠️ En fazla <b>{MAX_TRACKED_FLIGHTS}</b> uçuş takip edebilirsin.\n"
@@ -407,13 +399,8 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         flight_id = await add_flight(
             query.from_user.id,
             query.message.chat_id,
-            pending["origin"],
-            pending["destination"],
-            pending["depart_date"],
-            pending.get("return_date"),
+            origin, dest, depart_date, return_date,
         )
-        logger.info(f"track_yes: flight_id={flight_id}")
-        context.user_data.pop("pending_flight", None)
 
         if flight_id is None:
             await query.edit_message_text(
@@ -422,12 +409,13 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
 
-        card = pending.get("card", f"✈️ {pending['origin']} → {pending['destination']}")
         email = await get_user_email(query.from_user.id)
-        logger.info(f"track_yes: email={email is not None}, card_len={len(card)}")
 
+        ret_text = f"\n📅 Dönüş: <b>{return_date}</b>" if return_date else ""
         track_text = (
-            f"✅ Takibe alındı!\n\n{card}\n\n"
+            f"✅ Takibe alındı!\n\n"
+            f"✈️ <b>{origin} → {dest}</b>\n"
+            f"📅 Gidiş: <b>{depart_date}</b>{ret_text}\n\n"
             "📋 <b>Takip nasıl çalışır?</b>\n"
             "• Fiyat %10'dan fazla değişirse anında bildirim\n"
             "• Uçuşa 7 günden az kaldığında günlük kontrol\n"
@@ -443,13 +431,11 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             context.user_data["awaiting_email"] = True
 
-        logger.info(f"track_yes: sending msg, len={len(track_text)}")
         await query.message.edit_text(
             track_text,
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
-        logger.info("track_yes: done")
     except Exception as e:
         logger.error(f"track_yes_callback error: {e}", exc_info=True)
         try:
@@ -457,8 +443,8 @@ async def track_yes_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "⚠️ Bir hata oluştu, tekrar dener misin?",
                 parse_mode="HTML",
             )
-        except Exception as e2:
-            logger.error(f"track_yes: error msg also failed: {e2}")
+        except Exception:
+            pass
 
 
 async def handle_email_reply(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
